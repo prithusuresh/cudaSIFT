@@ -1,5 +1,5 @@
 TITLE:
-Parallelizing SIFT using Cuda (needs reworking)
+Parallelizing SIFT using Cuda 
 
 Members: 
 David Wang (dwang3) Prithvi Suresh (psuresh2)
