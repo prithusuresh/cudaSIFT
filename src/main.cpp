@@ -2,12 +2,12 @@
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgcodecs.hpp>
-#include "hello.h"
-#include "hello.cuh"
+#include <opencv2/features2d.hpp>
+#include <hello.h>
+#include <hello.cuh>
 
 using namespace cv;
 using namespace std;
-
 int main(int argc, char** argv) {
     if (argc != 2) {
         cout << " Usage: display_image ImageToLoadAndDisplay" << endl;
@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
     }
 
   Mat image;
-  image = imread(argv[1], IMREAD_COLOR);  // Read the file
+  image = imread(argv[1],0);  // Read the file
   if (image.empty())                      // Check for invalid input
   {
       cout << "Could not open or find the image" << std::endl;
@@ -25,8 +25,18 @@ int main(int argc, char** argv) {
               WINDOW_AUTOSIZE);     // Create a window for display.
   imshow("Display window", image);  // Show our image inside it.
   waitKey(0);                       // Wait for a keystroke in the window
+  
+  Ptr<SIFT> detector = SIFT::create();
+  vector<KeyPoint> keypoints;
+  detector->detect(image, keypoints );
+    //-- Draw keypoints
+  Mat img_keypoints;
+  drawKeypoints(image, keypoints, img_keypoints );
+    //-- Show detected (drawn) keypoints
+  imshow("SIFT Keypoints", img_keypoints );
+  waitKey();
 
-    printf("Result of 1+2 is: %d\n", add(1, 2));
-    wrap_hello(10);
+  printf("Result of 1+2 is: %d\n", add(1, 2));
+  wrap_hello(10);
     return 0;
 }
