@@ -34,6 +34,38 @@ We plan to use the original sequential implementation that openCV provides. This
 
 We hope to show a live demonstration of parallelized SIFT by running keypoint detection on the embedded GPU in real-time. If not, we will display our findings for strategies and the difference in optimizing for an embedded gpu and a really large one.
 
+# Getting Started 
+### PSC set-up instructions
+We need to build opencv from source since the existing installation on bridges was compiled with an older compiler. This causes linking errors since gcc < 5 had a different ABI.
+
+1. Get the newest version of opencv
+`wget -O opencv.zip https://github.com/opencv/opencv/archive/4.x.zip` 
+`unzip opencv.zip`
+2. Create build directory
+`mkdir -p build && cd build`
+3. Specify target directory for opencv
+`cmake -D CMAKE_INSTALL_PREFIX='path/to/target/directory' ../opencv-4.x/`
+4. Build and install at target directory
+`cmake --build . --target install`
+5. Append existing path
+`export PATH=/path/to/target/directory:PATH`
+
+### Hello world
+
+1. clone the repo and checkout to the psc branch
+`git clone https://github.com/prithusuresh/cudaSIFT.git`
+`git checkout psc`
+
+##### Note: for psc machines
+Run the rest of the commands in interactive mode or in batch mode. 
+1. Load cuda
+`module load cuda`
+2. `cmake .`
+3.  `make`
+4.  `./cudaSift jetson.jpg`
+
+This should run the opencv's implementation of SIFT and a series of prints from the GPU.
+
 # MILESTONE
 
 We had initially planned on implementing SIFT using cuda from scratch but later discovered that the latest version of opencv provides implicit support of cuda. To enable this support, we had to rebuild some libraries on the bridges machine. We had initally planned on using the gates cluster but discovered that updating some of the libraries was proving hard. Hence we are shifiting to use bridges2 as part of psc. 
@@ -46,3 +78,4 @@ We pretty much seem ontrack for the rest of our goals, but it would be interesti
 
 Sample keypoint detector on cudaSIFT:
 ![](/imgs/image.png)
+
