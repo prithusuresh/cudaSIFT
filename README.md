@@ -65,3 +65,17 @@ Run the rest of the commands in interactive mode or in batch mode.
 4.  `./cudaSift jetson.jpg`
 
 This should run the opencv's implementation of SIFT and a series of prints from the GPU.
+
+# MILESTONE
+
+We had initially planned on implementing SIFT using cuda from scratch but later discovered that the latest version of opencv provides implicit support of cuda. To enable this support, we had to rebuild some libraries on the bridges machine. We had initally planned on using the gates cluster but discovered that updating some of the libraries was proving hard. Hence we are shifiting to use bridges2 as part of psc. 
+
+We also discovered a [repo](https://github.com/Celebrandil/CudaSift) with optimized cuda for various gpu architectures. Given that the goal of the assignment was to understand and document the difference in optimizing code for an embedded gpu, we decided to shift our focus to optimizing this existing algorithm for the jetson. After working on running this on the bridges and the jetson nano, we have an implemented baseline. 
+
+Currently, the sequential version of SIFT as per the openCV implementation on an image of size (1920, 1080) takes 272 ms. The cuda version of SIFT on an image of size (1920, 1080) takes 0.47 ms for SIFT on the gpu alone and 0.81 ms along with cudaMemcpy. Times were estimated by taking the average of 200 runs. 
+
+We pretty much seem ontrack for the rest of our goals, but it would be interesting to see if we are able to optimize cudaSIFT for a webcam given that half the time is bottlenecked by memory movement. We are aiming to document a framework for optimizing for embedded devices. For the demo, we'd like to show our findings and optimization strategies along with a small demo. 
+
+Sample keypoint detector on cudaSIFT:
+![](/imgs/image.png)
+
