@@ -2,6 +2,7 @@
 // CUDA SIFT extractor by Marten Bjorkman aka Celebrandil //
 //********************************************************//
 
+#include <assert.h>
 #include <cstdio>
 
 #include "cudaImage.h"
@@ -29,16 +30,35 @@ void CudaImage::Allocate(int w, int h, int p, bool host, float *devmem,
         d_internalAlloc = true;
     }
     if (host && hostmem == NULL) {
-#if 0
         h_data = (float *)malloc(sizeof(float) * pitch * height);
-#else
-        safeCall(
-            cudaMallocHost((void **)&h_data, sizeof(float) * pitch * height));
-#endif
         if (h_data == NULL) printf("Failed to allocate host data\n");
 
         h_internalAlloc = true;
     }
+}
+void CudaImage::AllocateUnified(int w, int h, int p, bool host, float *devmem,
+                                float *hostmem) {
+    width = w;
+    height = h;
+    pitch = p;
+    d_data = devmem;
+    h_data = hostmem;
+    t_data = NULL;
+    unified = true;
+    // host and device pointers are the same
+    printf("Using unified Memory\n");
+    if (hostmem == NULL) {
+        assert(pitch == width);
+        cudaMallocManaged(&h_data, pitch * height * sizeof(float));
+    }
+
+    d_data = h_data;
+    d_internalAlloc = true;
+    h_internalAlloc = true;
+    // we aren't using pitches cuz no memcpy memory
+    assert(pitch == width);
+    assert(h_data != NULL);
+    assert(d_data != NULL);
 }
 
 CudaImage::CudaImage()
@@ -53,7 +73,7 @@ CudaImage::CudaImage()
 CudaImage::~CudaImage() {
     if (d_internalAlloc && d_data != NULL) safeCall(cudaFree(d_data));
     d_data = NULL;
-    if (h_internalAlloc && h_data != NULL) free(h_data);
+    if (!unified && h_internalAlloc && h_data != NULL) free(h_data);
     h_data = NULL;
     if (t_data != NULL) safeCall(cudaFreeArray((cudaArray *)t_data));
     t_data = NULL;

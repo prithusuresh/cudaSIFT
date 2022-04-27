@@ -3,10 +3,12 @@
 //              celle @ csc.kth.se                       //
 //********************************************************//
 
+#include <cuda_runtime.h>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <opencv2/core.hpp>
+#include <opencv2/core/cuda.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -17,8 +19,12 @@ int ImproveHomography(SiftData &data, float *homography, int numLoops,
                       float minScore, float maxAmbiguity, float thresh);
 void PrintMatchData(SiftData &siftData1, SiftData &siftData2, CudaImage &img);
 void MatchAll(SiftData &siftData1, SiftData &siftData2, float *homography);
+void PlotKeyPoints(SiftData &siftData1, CudaImage &img);
 
 double ScaleUp(CudaImage &res, CudaImage &src);
+
+#define WIDTH 1920
+#define HEIGHT 1080
 
 ///////////////////////////////////////////////////////////////////////////////
 // Main program
@@ -28,13 +34,16 @@ int main(int argc, char **argv) {
     if (argc > 1) devNum = std::atoi(argv[1]);
     if (argc > 2) imgSet = std::atoi(argv[2]);
 
+    void *unified_ptr;
+    cudaMallocManaged(&unified_ptr, WIDTH * HEIGHT * sizeof(float));
     // Read images using OpenCV
-    cv::Mat limg, rimg;
+    cv::Mat limg(HEIGHT, WIDTH, CV_32FC1, unified_ptr);
+    cv::Mat rimg;
     if (imgSet) {
         cv::imread("data/left.pgm", 0).convertTo(limg, CV_32FC1);
         cv::imread("data/righ.pgm", 0).convertTo(rimg, CV_32FC1);
     } else {
-        cv::imread("data/img1.png", 0).convertTo(limg, CV_32FC1);
+        cv::imread("data/1920x1080.png", 0).convertTo(limg, CV_32FC1);
         //     cv::imread("data/img2.png", 0).convertTo(rimg, CV_32FC1);
     }
     // cv::flip(limg, rimg, -1);
@@ -46,61 +55,31 @@ int main(int argc, char **argv) {
     std::cout << "Initializing data..." << std::endl;
     InitCuda(devNum);
     CudaImage img1;
-    // CudaImage img2;
-    img1.Allocate(w, h, iAlignUp(w, 128), false, NULL, (float *)limg.data);
-    // img2.Allocate(w, h, iAlignUp(w, 128), false, NULL, (float *)rimg.data);
+    img1.AllocateUnified(w, h, w, false, NULL, (float *)limg.data);
     img1.Download();
-    // img2.Download();
 
     // Extract Sift features from images
     SiftData siftData1;
-    // siftData2;
     float initBlur = 1.0f;
     float thresh = (imgSet ? 4.5f : 3.0f);
     InitSiftData(siftData1, 32768, true, true);
-    // InitSiftData(siftData2, 32768, true, true);
 
-    // A bit of benchmarking
-    // for (int thresh1=1.00f;thresh1<=4.01f;thresh1+=0.50f) {
     float *memoryTmp = AllocSiftTempMemory(w, h, 5, false);
     double average_time = 0;
 #define N 100
+#define WARMUP 5
     for (int i = 0; i < N; i++) {
-        average_time += ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f,
-                                    false, memoryTmp);
-        //     ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false,
-        //                 memoryTmp);
+        double temp_time = ExtractSift(siftData1, img1, 5, initBlur, thresh,
+                                       0.0f, false, memoryTmp);
+        if (i >= WARMUP) average_time += temp_time;
     }
     FreeSiftTempMemory(memoryTmp);
-    printf("Average Time per run: %.4f\n", average_time / N);
-    // Match Sift features and find a homography
-    // for (int i = 0; i < 1; i++) MatchSiftData(siftData1, siftData2);
-    // float homography[9];
-    // int numMatches;
-    // FindHomography(siftData1, homography, &numMatches, 10000, 0.00f, 0.80f,
-    //                5.0);
-    // int numFit = ImproveHomography(siftData1, homography, 5, 0.00f,
-    // 0.80f, 3.0);
-
-    // std::cout << "Number of original features: " << siftData1.numPts << " "
-    //           << siftData2.numPts << std::endl;
-    // std::cout << "Number of matching features: " << numFit << " " <<
-    // numMatches
-    //           << " "
-    //           << 100.0f * numFit / std::min(siftData1.numPts,
-    //           siftData2.numPts)
-    //           << "% " << initBlur << " " << thresh << std::endl;
-    // //}
-
-    // // Print out and store summary data
-    // PrintMatchData(siftData1, siftData2, img1);
-    // cv::imwrite("data/limg_pts.pgm", limg);
-
-    // MatchAll(siftData1, siftData2, homography);
+    printf("Average Time per run: %.4f\n", average_time / (N - WARMUP));
+    PlotKeyPoints(siftData1, img1);
+    cv::imwrite("data/limg_pts.pgm", limg);
 
     // Free Sift data from device
     FreeSiftData(siftData1);
-    // FreeSiftData(siftData2);
 }
 
 void MatchAll(SiftData &siftData1, SiftData &siftData2, float *homography) {
@@ -169,6 +148,38 @@ void MatchAll(SiftData &siftData1, SiftData &siftData2, float *homography) {
               << std::endl;  //%%%
     std::cout << homography[6] << " " << homography[7] << " " << homography[8]
               << std::endl;  //%%%
+}
+
+void PlotKeyPoints(SiftData &siftData1, CudaImage &img) {
+    int numPts = siftData1.numPts;
+#ifdef MANAGEDMEM
+    SiftPoint *sift1 = siftData1.m_data;
+#else
+    SiftPoint *sift1 = siftData1.h_data;
+#endif
+    float *h_img = img.h_data;
+    int w = img.width;
+    int h = img.height;
+    std::cout << std::setprecision(3);
+    for (int j = 0; j < numPts; j++) {
+        int k = sift1[j].match;
+        int x = (int)(sift1[j].xpos + 0.5);
+        int y = (int)(sift1[j].ypos + 0.5);
+        int s = std::min(
+            x, std::min(y, std::min(w - x - 2,
+                                    std::min(h - y - 2,
+                                             (int)(1.41 * sift1[j].scale)))));
+        int p = y * w + x;
+        p += (w + 1);
+        for (int k = 0; k < s; k++)
+            h_img[p - k] = h_img[p + k] = h_img[p - k * w] = h_img[p + k * w] =
+                0.0f;
+        p -= (w + 1);
+        for (int k = 0; k < s; k++)
+            h_img[p - k] = h_img[p + k] = h_img[p - k * w] = h_img[p + k * w] =
+                255.0f;
+    }
+    std::cout << std::setprecision(6);
 }
 
 void PrintMatchData(SiftData &siftData1, SiftData &siftData2, CudaImage &img) {

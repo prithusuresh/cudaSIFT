@@ -513,6 +513,7 @@ double LaplaceMulti(cudaTextureObject_t texObj, CudaImage &baseImage,
     dim3 threads(LAPLACE_W + 2 * LAPLACE_R);
     // num blocks is ceil(width,128), height
     dim3 blocks(iDivUp(width, LAPLACE_W), height);
+
     LaplaceMultiMem<<<blocks, threads>>>(baseImage.d_data, results[0].d_data,
                                          width, pitch, height, octave);
 #endif
@@ -556,9 +557,9 @@ double FindPointsMulti(CudaImage *sources, SiftData &siftData, float thresh,
     dim3 blocks(iDivUp(w, MINMAX_W) * NUM_SCALES, iDivUp(h, MINMAX_H));
     dim3 threads(MINMAX_W + 2);
 #ifdef MANAGEDMEM
-    FindPointsMulti<<<blocks, threads>>>(sources->d_data, siftData.m_data, w, p,
-                                         h, subsampling, lowestScale, thresh,
-                                         factor, edgeLimit, octave);
+    FindPointsMultiNew<<<blocks, threads>>>(sources->d_data, siftData.m_data, w,
+                                            p, h, subsampling, lowestScale,
+                                            thresh, factor, edgeLimit, octave);
 #else
     FindPointsMultiNew<<<blocks, threads>>>(sources->d_data, siftData.d_data, w,
                                             p, h, subsampling, lowestScale,

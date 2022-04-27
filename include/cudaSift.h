@@ -3,7 +3,7 @@
 
 #include "cudaImage.h"
 
-#define MANAGEDMEM 1
+#define MANAGEDMEM
 
 typedef struct {
     float xpos;
