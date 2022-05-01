@@ -2,6 +2,7 @@
 #define CUDASIFT_H
 
 #include "cudaImage.h"
+#include "cuda_runtime.h"
 
 #define MANAGEDMEM
 
@@ -50,4 +51,8 @@ double FindHomography(SiftData &data, float *homography, int *numMatches,
                       int numLoops = 1000, float minScore = 0.85f,
                       float maxAmbiguity = 0.95f, float thresh = 5.0f);
 
+double ExtractSiftAsync(SiftData &siftData, CudaImage &img, int numOctaves,
+                        double initBlur, float thresh, float lowestScale = 0.0f,
+                        bool scaleUp = false, float *tempMemory = 0,
+                        cudaStream_t cuda_stream = 0);
 #endif
