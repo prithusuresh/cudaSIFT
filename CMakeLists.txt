@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.1)
 PROJECT(cudaSift LANGUAGES C CXX CUDA)
 
+
 #set(CMAKE_CXX_STANDARD 11)
 #find_package(OpenCV REQUIRED)
 #include_directories(include src ${OpenCV_INCLUDE_DIRS})
@@ -14,6 +15,7 @@ PROJECT(cudaSift LANGUAGES C CXX CUDA)
 #set_target_properties(cudaSift PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 #target_link_libraries(cudaSift ${OpenCV_LIBS})
 
+set(CMAKE_BUILD_TYPE Debug)
 set(cudaSift_VERSION_MAJOR 2)
 set(cudaSift_VERSION_MINOR 0)
 set(cudaSift_VERSION_PATCH 0)

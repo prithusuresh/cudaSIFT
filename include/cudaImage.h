@@ -14,7 +14,7 @@ class CudaImage {
     float *t_data;
     bool d_internalAlloc;
     bool h_internalAlloc;
-    bool unified;
+    bool unified = false;
 
    public:
     CudaImage();

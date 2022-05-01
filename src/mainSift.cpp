@@ -4,6 +4,7 @@
 //********************************************************//
 
 #include <cuda_runtime.h>
+#include <chrono>
 #include <cmath>
 #include <iomanip>
 #include <iostream>
@@ -14,38 +15,50 @@
 
 #include "cudaImage.h"
 #include "cudaSift.h"
+#include "cudautils.h"
 
 int ImproveHomography(SiftData &data, float *homography, int numLoops,
                       float minScore, float maxAmbiguity, float thresh);
 void PrintMatchData(SiftData &siftData1, SiftData &siftData2, CudaImage &img);
 void MatchAll(SiftData &siftData1, SiftData &siftData2, float *homography);
-void PlotKeyPoints(SiftData &siftData1, CudaImage &img);
+void PlotKeyPoints(SiftData &siftData1, CudaImage &img, cv::Mat color);
 
+void siftRunVideoUnifiedSync(int devnum, int imgSet);
+void siftRunImage(int devnum, int imgSet);
 double ScaleUp(CudaImage &res, CudaImage &src);
 
 #define WIDTH 1920
 #define HEIGHT 1080
+#define N 100
+#define WARMUP 5
 
 ///////////////////////////////////////////////////////////////////////////////
 // Main program
 ///////////////////////////////////////////////////////////////////////////////
 int main(int argc, char **argv) {
     int devNum = 0, imgSet = 0;
-    if (argc > 1) devNum = std::atoi(argv[1]);
-    if (argc > 2) imgSet = std::atoi(argv[2]);
+    if (argc > 1) imgSet = std::atoi(argv[1]);
 
-    void *unified_ptr;
-    cudaMallocManaged(&unified_ptr, WIDTH * HEIGHT * sizeof(float));
-    // Read images using OpenCV
-    cv::Mat limg(HEIGHT, WIDTH, CV_32FC1, unified_ptr);
-    cv::Mat rimg;
-    if (imgSet) {
-        cv::imread("data/left.pgm", 0).convertTo(limg, CV_32FC1);
-        cv::imread("data/righ.pgm", 0).convertTo(rimg, CV_32FC1);
+    if (imgSet == 0) {
+        siftRunVideoUnifiedSync(devNum, imgSet);
     } else {
-        cv::imread("data/1920x1080.png", 0).convertTo(limg, CV_32FC1);
-        //     cv::imread("data/img2.png", 0).convertTo(rimg, CV_32FC1);
+        siftRunImage(devNum, imgSet);
     }
+}
+void siftRunImage(int devNum, int imgSet) {
+    cv::VideoCapture cap;
+    cap.open("data/vid1.mp4");
+    if (!cap.isOpened()) {
+        printf("Error opening file\n");
+        return;
+    }
+    cv::Mat limg, grey;
+    cv::Mat rimg;
+    cap.read(rimg);
+    cv::cvtColor(rimg, grey, cv::COLOR_BGR2GRAY);
+    grey.convertTo(limg, CV_32FC1);
+
+    //     cv::imread("data/img2.png", 0).convertTo(rimg, CV_32FC1);
     // cv::flip(limg, rimg, -1);
     unsigned int w = limg.cols;
     unsigned int h = limg.rows;
@@ -55,19 +68,17 @@ int main(int argc, char **argv) {
     std::cout << "Initializing data..." << std::endl;
     InitCuda(devNum);
     CudaImage img1;
-    img1.AllocateUnified(w, h, w, false, NULL, (float *)limg.data);
+    img1.Allocate(w, h, iAlignUp(w, 128), false, NULL, (float *)limg.data);
     img1.Download();
 
     // Extract Sift features from images
     SiftData siftData1;
     float initBlur = 1.0f;
-    float thresh = (imgSet ? 4.5f : 3.0f);
+    float thresh = 3.0f;
     InitSiftData(siftData1, 32768, true, true);
 
     float *memoryTmp = AllocSiftTempMemory(w, h, 5, false);
     double average_time = 0;
-#define N 100
-#define WARMUP 5
     for (int i = 0; i < N; i++) {
         double temp_time = ExtractSift(siftData1, img1, 5, initBlur, thresh,
                                        0.0f, false, memoryTmp);
@@ -75,12 +86,66 @@ int main(int argc, char **argv) {
     }
     FreeSiftTempMemory(memoryTmp);
     printf("Average Time per run: %.4f\n", average_time / (N - WARMUP));
-    PlotKeyPoints(siftData1, img1);
+    PlotKeyPoints(siftData1, img1, limg);
     cv::imwrite("data/limg_pts.pgm", limg);
 
     // Free Sift data from device
     FreeSiftData(siftData1);
 }
+void siftRunVideoUnifiedSync(int devNum, int imgSet) {
+    void *unified_ptr;
+    cudaMallocManaged(&unified_ptr, WIDTH * HEIGHT * sizeof(float));
+    // Read images using OpenCV
+    cv::Mat limg(HEIGHT, WIDTH, CV_32FC1, unified_ptr);
+    cv::Mat rimg, grey;
+    cv::VideoCapture cap;
+    cap.open("data/vid1.mp4");
+    if (!cap.isOpened()) {
+        printf("Error opening file\n");
+        return;
+    }
+
+    InitCuda(devNum);
+    SiftData siftData1;
+    float initBlur = 1.0f;
+    float thresh = 4.5f;
+    InitSiftData(siftData1, 32768, true, true);
+    unsigned int w = limg.cols;
+    unsigned int h = limg.rows;
+    CudaImage img1;
+    img1.AllocateUnified(w, h, w, false, NULL, (float *)limg.data);
+
+    float *memoryTmp = AllocSiftTempMemory(w, h, 5, false);
+    double average_time = 0;
+
+    int i;
+    for (i = 0;; i++) {
+        auto start = std::chrono::high_resolution_clock::now();
+        cap.read(rimg);
+        if (rimg.empty()) {
+            break;
+        }
+        cv::imshow("lion", rimg);
+        cv::cvtColor(rimg, grey, cv::COLOR_BGR2GRAY);
+        grey.convertTo(limg, CV_32FC1);
+        double temp_time = ExtractSift(siftData1, img1, 5, initBlur, thresh,
+                                       0.0f, false, memoryTmp);
+        // if (i >= WARMUP) average_time += temp_time;
+        PlotKeyPoints(siftData1, img1, rimg);
+        cv::imwrite("data/limg_pts.pgm", limg);
+        limg.convertTo(rimg, CV_32FC1, 1.0 / 255);
+        cv::imshow("lion", rimg);
+        cv::waitKey(5);
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> diff = end - start;
+
+        if (i >= WARMUP) average_time += diff.count();
+    }
+    FreeSiftTempMemory(memoryTmp);
+    printf("Average Time per run: %.4f\n", average_time / (i - WARMUP));
+    // Free Sift data from device
+    FreeSiftData(siftData1);
+};
 
 void MatchAll(SiftData &siftData1, SiftData &siftData2, float *homography) {
 #ifdef MANAGEDMEM
@@ -150,7 +215,7 @@ void MatchAll(SiftData &siftData1, SiftData &siftData2, float *homography) {
               << std::endl;  //%%%
 }
 
-void PlotKeyPoints(SiftData &siftData1, CudaImage &img) {
+void PlotKeyPoints(SiftData &siftData1, CudaImage &img, cv::Mat color) {
     int numPts = siftData1.numPts;
 #ifdef MANAGEDMEM
     SiftPoint *sift1 = siftData1.m_data;
