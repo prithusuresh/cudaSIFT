@@ -4,7 +4,7 @@
 
 #ifndef CUDAIMAGE_H
 #define CUDAIMAGE_H
-
+#include "cuda_runtime.h"
 class CudaImage {
    public:
     int width, height;
@@ -24,6 +24,7 @@ class CudaImage {
     void Allocate(int width, int height, int pitch, bool withHost,
                   float *devMem = NULL, float *hostMem = NULL);
     double Download();
+    double DownloadAsync(cudaStream_t cuda_stream);
     double Readback();
     double InitTexture();
     double CopyToTexture(CudaImage &dst, bool host);

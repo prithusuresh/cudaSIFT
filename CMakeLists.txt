@@ -1,21 +1,9 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.9)
 PROJECT(cudaSift LANGUAGES C CXX CUDA)
 
 
-#set(CMAKE_CXX_STANDARD 11)
-#find_package(OpenCV REQUIRED)
-#include_directories(include src ${OpenCV_INCLUDE_DIRS})
-#message(STATUS "OpenCV library status:")
-#message(STATUS "    version: ${OpenCV_VERSION}")
-#message(STATUS "    libraries: ${OpenCV_LIBS}")
-#message(STATUS "    include path: ${OpenCV_INCLUDE_DIRS}")
-#
-#file(GLOB all_SRCS "include/*" "src/*")
-#add_executable(cudaSift ${all_SRCS})
-#set_target_properties(cudaSift PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-#target_link_libraries(cudaSift ${OpenCV_LIBS})
 
-set(CMAKE_BUILD_TYPE Debug)
+#set(CMAKE_BUILD_TYPE Debug)
 set(cudaSift_VERSION_MAJOR 2)
 set(cudaSift_VERSION_MINOR 0)
 set(cudaSift_VERSION_PATCH 0)
@@ -73,7 +61,8 @@ set_target_properties(cudasift PROPERTIES
   COMPILE_FLAGS "${EXTRA_CXX_FLAGS}"
 )
 
-target_link_libraries(cudasift ${CUDA_cudadevrt_LIBRARY} ${OpenCV_LIBS})
+find_package(OpenMP)
+target_link_libraries(cudasift OpenMP::OpenMP_CXX ${CUDA_cudadevrt_LIBRARY} ${OpenCV_LIBS})
 #  /usr/local/cuda/lib64/libcudadevrt.a ${OpenCV_LIBS}
 #)
 
