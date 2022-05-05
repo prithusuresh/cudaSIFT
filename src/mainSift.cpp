@@ -53,7 +53,7 @@ char *fname = ((char *)"data/vid1/vid1_1920.mp4");
 ///////////////////////////////////////////////////////////////////////////////
 // Main program
 ///////////////////////////////////////////////////////////////////////////////
-main(int argc, char **argv) {
+int main(int argc, char **argv) {
     int devNum = 0;
     int imgSet = 0;
     if (argc > 1) imgSet = std::atoi(argv[1]);
