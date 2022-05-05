@@ -63,7 +63,7 @@ float *AllocSiftTempMemory(int width, int height, int numOctaves,
     size += sizeTmp;
     safeCall(cudaMallocPitch((void **)&memoryTmp, &pitch, (size_t)4096,
                              (size + 4095) / 4096 * sizeof(float)));
-#ifdef VERBOSE
+#if 1
     printf("Allocated memory size: %d bytes\n", size);
     printf("Memory allocation time =      %.2f ms\n\n", timer.read());
 #endif

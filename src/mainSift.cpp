@@ -32,8 +32,8 @@ void siftRunVideoUnifiedAsync(int devNum, int imgSet);
 void siftRunVideoCPU(int devNum, int imgSet);
 double ScaleUp(CudaImage &res, CudaImage &src);
 
-#define WIDTH 3840
-#define HEIGHT 2160
+#define WIDTH 1920
+#define HEIGHT 1080
 #define N 100
 #define WARMUP 5
 int LIVE = 0;
@@ -48,7 +48,7 @@ enum {
     CPU
 };
 
-char *fname = ((char *)"data/vid1.mp4");
+char *fname = ((char *)"data/vid1/vid1_1920.mp4");
 
 ///////////////////////////////////////////////////////////////////////////////
 // Main program
@@ -214,7 +214,7 @@ void siftRunVideoCPU(int devNum, int imgSet) {
 
     double average_time = 0;
     double average_extraction_time = 0;
-
+    double average_points_per_frame = 0;
     cv::Ptr<cv::ORB> detector = cv::ORB::create();
     std::vector<cv::KeyPoint> keypoints;
 
@@ -273,6 +273,7 @@ void siftRunVideo(int devNum, int imgSet) {
     float *memoryTmp = AllocSiftTempMemory(w, h, 5, false);
     double average_time = 0;
     double average_extraction_time = 0;
+    double average_points_per_frame = 0;
 
     int i;
     for (i = 0;; i++) {
@@ -287,12 +288,15 @@ void siftRunVideo(int devNum, int imgSet) {
         img1.Download();
         double temp_time = ExtractSift(siftData1, img1, 5, initBlur, thresh,
                                        0.0f, false, memoryTmp);
-        if (i >= WARMUP) average_extraction_time += temp_time;
         PlotKeyPoints(siftData1, img1);
         auto end = std::chrono::high_resolution_clock::now();
         curr_img.convertTo(rimg, CV_32FC1, 1.0 / 255);
         std::chrono::duration<double, std::milli> diff = end - start;
-        if (i >= WARMUP) average_time += diff.count();
+        if (i >= WARMUP) {
+            average_time += diff.count();
+            average_extraction_time += temp_time;
+            average_points_per_frame += siftData1.numPts;
+        }
         cv::imshow("Video", rimg);
         if ((char)cv::waitKey(1) == 27) break;
     }
@@ -300,6 +304,8 @@ void siftRunVideo(int devNum, int imgSet) {
     printf("Average Time per frame: %.4f\n", average_time / (i - WARMUP));
     printf("Average Time per extraction: %.4f\n",
            average_extraction_time / (i - WARMUP));
+    printf("Average Points per frame: %.4f\n",
+           (average_points_per_frame * 1.0) / (i - WARMUP));
     // Free Sift data from device
     FreeSiftData(siftData1);
 };
@@ -335,6 +341,7 @@ void siftRunVideoAsync(int devNum, int imgSet) {
     float *memoryTmp = AllocSiftTempMemory(w, h, 5, false);
     double average_time = 0;
     double average_extraction_time = 0;
+    double average_points_per_frame = 0;
     cudaStream_t st1, st2;
     safeCall(cudaStreamCreate(&st1));
     safeCall(cudaStreamCreate(&st2));
@@ -370,38 +377,27 @@ void siftRunVideoAsync(int devNum, int imgSet) {
     for (i = 0;; i++) {
         auto start = std::chrono::high_resolution_clock::now();
 
-#pragma omp sections
-        {
-#pragma omp section
-            {
-                double temp_time = ExtractSiftAsync(
-                    *curr_sift, *curr_cuda, 5, initBlur, thresh, 0.0f, false,
-                    memoryTmp, *curr_stream);
+        double temp_time =
+            ExtractSiftAsync(*curr_sift, *curr_cuda, 5, initBlur, thresh, 0.0f,
+                             false, memoryTmp, *curr_stream);
 
-                if (i >= WARMUP) average_extraction_time += temp_time;
-#ifdef MANAGEDMEM
-                cudaStreamSynchronize(*curr_stream);
-#else
-                if (curr_sift->h_data)
-                    safeCall(
-                        cudaMemcpyAsync(curr_sift->h_data, curr_sift->d_data,
-                                        sizeof(SiftPoint) * curr_sift->numPts,
-                                        cudaMemcpyDeviceToHost, curr_stream));
-#endif
-            }
-#pragma omp section
-            {
-                cap.read(rimg);
-                if (rimg.empty()) {
-                    printf("Done: %d \n", i);
-                } else {
-                    cv::cvtColor(rimg, grey, cv::COLOR_BGR2GRAY);
-                    grey.convertTo(*next, CV_32FC1);
-                    next_cuda->DownloadAsync(*next_stream);
-                }
-                cudaStreamSynchronize(*next_stream);
-            }
+        cap.read(rimg);
+        if (rimg.empty()) {
+            printf("Done: %d \n", i);
+        } else {
+            cv::cvtColor(rimg, grey, cv::COLOR_BGR2GRAY);
+            grey.convertTo(*next, CV_32FC1);
+            next_cuda->DownloadAsync(*next_stream);
         }
+        cudaStreamSynchronize(*next_stream);
+#ifdef MANAGEDMEM
+        cudaStreamSynchronize(*curr_stream);
+#else
+        if (curr_sift->h_data)
+            safeCall(cudaMemcpyAsync(curr_sift->h_data, curr_sift->d_data,
+                                     sizeof(SiftPoint) * curr_sift->numPts,
+                                     cudaMemcpyDeviceToHost, curr_stream));
+#endif
 
         if (rimg.empty()) {
             break;
@@ -431,7 +427,11 @@ void siftRunVideoAsync(int devNum, int imgSet) {
         next_sift = tmp_sift;
 
         std::chrono::duration<double, std::milli> diff = end - start;
-        if (i >= WARMUP) average_time += diff.count();
+        if (i >= WARMUP) {
+            average_time += diff.count();
+            average_extraction_time += temp_time;
+            average_points_per_frame = next_sift->numPts;
+        }
         cv::imshow("Video", show);
         if ((char)cv::waitKey(1) == 27) break;
     }
@@ -439,11 +439,15 @@ void siftRunVideoAsync(int devNum, int imgSet) {
     printf("Average Time per frame: %.4f\n", average_time / (i - WARMUP));
     printf("Average Time per extraction: %.4f\n",
            average_extraction_time / (i - WARMUP));
+    printf("Average Points per frame: %.4f\n",
+           (average_points_per_frame * 1.0) / (i - WARMUP));
 cleanup:
     FreeSiftTempMemory(memoryTmp);
     // Free Sift data from device
     FreeSiftData(siftData1);
     FreeSiftData(siftData2);
+    cudaStreamDestroy(st1);
+    cudaStreamDestroy(st2);
 };
 void siftRunVideoUnifiedAsync(int devNum, int imgSet) {
     void *unified_ptr1, *unified_ptr2;
@@ -481,6 +485,7 @@ void siftRunVideoUnifiedAsync(int devNum, int imgSet) {
     float *memoryTmp = AllocSiftTempMemory(w, h, 5, false);
     double average_time = 0;
     double average_extraction_time = 0;
+    int average_points_per_frame = 0;
     cudaStream_t st1, st2;
     cudaStreamCreate(&st1);
     cudaStreamCreate(&st2);
@@ -519,8 +524,6 @@ void siftRunVideoUnifiedAsync(int devNum, int imgSet) {
             ExtractSiftAsync(*curr_sift, *curr_cuda, 5, initBlur, thresh, 0.0f,
                              false, memoryTmp, *curr_stream);
 
-        if (i >= WARMUP) average_extraction_time += temp_time;
-
         cap.read(rimg);
         if (rimg.empty()) {
             printf("Done: %d \n", i);
@@ -528,6 +531,7 @@ void siftRunVideoUnifiedAsync(int devNum, int imgSet) {
         }
         cv::cvtColor(rimg, grey, cv::COLOR_BGR2GRAY);
         grey.convertTo(*next, CV_32FC1);
+        cudaStreamSynchronize(*next_stream);
 #ifdef MANAGEDMEM
         cudaStreamSynchronize(*curr_stream);
 #else
@@ -536,7 +540,6 @@ void siftRunVideoUnifiedAsync(int devNum, int imgSet) {
                                      sizeof(SiftPoint) * curr_sift->numPts,
                                      cudaMemcpyDeviceToHost, *curr_stream));
 #endif
-        // cudaStreamSynchronize(*next_stream);
         // synchronized
         PlotKeyPoints(*curr_sift, *curr_cuda);
         auto end = std::chrono::high_resolution_clock::now();
@@ -562,7 +565,11 @@ void siftRunVideoUnifiedAsync(int devNum, int imgSet) {
         next_sift = tmp_sift;
 
         std::chrono::duration<double, std::milli> diff = end - start;
-        if (i >= WARMUP) average_time += diff.count();
+        if (i >= WARMUP) {
+            average_time += diff.count();
+            average_extraction_time += temp_time;
+            average_points_per_frame += next_sift->numPts;
+        }
         cv::imshow("Video", show);
         if ((char)cv::waitKey(1) == 27) break;
     }
@@ -570,11 +577,15 @@ void siftRunVideoUnifiedAsync(int devNum, int imgSet) {
     printf("Average Time per frame: %.4f\n", average_time / (i - WARMUP));
     printf("Average Time per extraction: %.4f\n",
            average_extraction_time / (i - WARMUP));
+    printf("Average Points per frame: %.4f\n",
+           (average_points_per_frame * 1.0) / (i - WARMUP));
 cleanup:
     FreeSiftTempMemory(memoryTmp);
     // Free Sift data from device
     FreeSiftData(siftData1);
     FreeSiftData(siftData2);
+    cudaStreamDestroy(st1);
+    cudaStreamDestroy(st2);
 };
 void siftRunVideoUnifiedSync(int devNum, int imgSet) {
     void *unified_ptr;
@@ -605,6 +616,7 @@ void siftRunVideoUnifiedSync(int devNum, int imgSet) {
     float *memoryTmp = AllocSiftTempMemory(w, h, 5, false);
     double average_time = 0;
     double average_extraction_time = 0;
+    int average_points_per_frame = 0;
 
     int i;
     for (i = 0;; i++) {
@@ -619,11 +631,14 @@ void siftRunVideoUnifiedSync(int devNum, int imgSet) {
 
         double temp_time = ExtractSift(siftData1, img1, 5, initBlur, thresh,
                                        0.0f, false, memoryTmp);
-        if (i >= WARMUP) average_extraction_time += temp_time;
         PlotKeyPoints(siftData1, img1);
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> diff = end - start;
-        if (i >= WARMUP) average_time += diff.count();
+        if (i >= WARMUP) {
+            average_extraction_time += temp_time;
+            average_time += diff.count();
+            average_points_per_frame += siftData1.numPts;
+        }
         curr_img.convertTo(rimg, CV_32FC1, 1.0 / 255);
         cv::imshow("Video", rimg);
         if ((char)cv::waitKey(1) == 27) break;
@@ -632,6 +647,8 @@ void siftRunVideoUnifiedSync(int devNum, int imgSet) {
     printf("Average Time per frame: %.4f\n", average_time / (i - WARMUP));
     printf("Average Time per extraction: %.4f\n",
            average_extraction_time / (i - WARMUP));
+    printf("Average Points per frame: %.4f\n",
+           (average_points_per_frame * 1.0) / (i - WARMUP));
     // Free Sift data from device
     FreeSiftData(siftData1);
 };
