@@ -1,6 +1,9 @@
-# TITLE: Parallelizing SIFT using Cuda
+# TITLE: Optimizing SIFT for an Embedded GPU
 
 ##### Members: David Wang (dwang3) Prithvi Suresh (psuresh2)
+
+# [Presentation Link](https://youtu.be/uRTEdcjqfKg)
+
 
 # SUMMARY: 
 We plan to parallelize SIFT using cuda to run on an nvidia-gpu. Although we don’t necessarily know the target speed-up, we are interested in understanding how our approaches to parallelizing would differ based on different target devices. We selected two devices, NVIDIA GeForce RTX 2080 from the Gates Cluster and an NVIDIA Jetson Nano, and will measure the differences in the speedup between the two devices.
