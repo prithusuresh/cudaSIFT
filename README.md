@@ -1,6 +1,6 @@
 # TITLE: Optimizing SIFT for an Embedded GPU
 
-##### Members: David Wang (dwang3) Prithvi Suresh (psuresh2)
+##### Members: Prithvi Suresh (psuresh2)
 
 # [Presentation Link](https://youtu.be/uRTEdcjqfKg)
 
@@ -78,7 +78,4 @@ We also discovered a [repo](https://github.com/Celebrandil/CudaSift) with optimi
 Currently, the sequential version of SIFT as per the openCV implementation on an image of size (1920, 1080) takes 272 ms. The cuda version of SIFT on an image of size (1920, 1080) takes 0.47 ms for SIFT on the gpu alone and 0.81 ms along with cudaMemcpy. Times were estimated by taking the average of 200 runs. 
 
 We pretty much seem ontrack for the rest of our goals, but it would be interesting to see if we are able to optimize cudaSIFT for a webcam given that half the time is bottlenecked by memory movement. We are aiming to document a framework for optimizing for embedded devices. For the demo, we'd like to show our findings and optimization strategies along with a small demo. 
-
-Sample keypoint detector on cudaSIFT:
-![](/imgs/image.png)
 
